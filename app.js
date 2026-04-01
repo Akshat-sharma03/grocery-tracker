@@ -2,6 +2,27 @@ import { getEmoji } from './emoji-map.js';
 import { getItemSuggestions, getRecipeSuggestions, recipeMap } from './suggestions.js';
 import { initNotifications } from './notifications.js';
 
+import { firebaseConfig } from "./firebase-config.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import {
+  getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot,
+  enableIndexedDbPersistence
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+const useFirebase = firebaseConfig.apiKey !== "REPLACE_ME";
+let db, auth;
+let unsubscribeItems = null;
+
+if (useFirebase) {
+    const fbApp = initializeApp(firebaseConfig);
+    db = getFirestore(fbApp);
+    auth = getAuth(fbApp);
+
+    enableIndexedDbPersistence(db).catch(() => {});
+    signInAnonymously(auth).catch(() => {});
+}
+
 const DATA_KEY = "grocery_app_data";
 
 export function loadData() {
@@ -107,15 +128,24 @@ function checkRecurringItems() {
                 newItem.isRecurring = true;
                 newItem.lastGeneratedFor = currentPeriodKey;
                 newItem.addedAt = Date.now();
-                appData.items.push(newItem);
+                
+                if (useFirebase) {
+                    setDoc(doc(db, "lists", appData.currentListId, "items", template.id), template);
+                    setDoc(doc(db, "lists", appData.currentListId, "items", newItem.id), newItem);
+                } else {
+                    appData.items.push(newItem);
+                }
             } else {
                 template.lastGeneratedFor = currentPeriodKey;
+                if (useFirebase) {
+                    setDoc(doc(db, "lists", appData.currentListId, "items", template.id), template);
+                }
             }
             changed = true;
         }
     });
 
-    if (changed) saveData(appData);
+    if (changed && !useFirebase) saveData(appData);
 }
 
 function showCompletionMessage() {
@@ -182,13 +212,37 @@ function updateSpendingFooter() {
     footer.innerHTML = `Estimated: ${currency} ${total.toFixed(2)} &bull; Remaining: ${currency} ${remaining.toFixed(2)} &bull; Completed: ${currency} ${completed.toFixed(2)}`;
 }
 
+function setupFirestoreSync() {
+    if (!useFirebase) return;
+    if (unsubscribeItems) unsubscribeItems();
+
+    const itemsRef = collection(db, "lists", appData.currentListId, "items");
+    unsubscribeItems = onSnapshot(itemsRef, (snapshot) => {
+        const firestoreItems = [];
+        snapshot.forEach(d => firestoreItems.push(d.data()));
+        
+        // Merge into appData.items (replace current list's items)
+        appData.items = appData.items.filter(i => i.listId !== appData.currentListId).concat(firestoreItems);
+        saveData(appData); // Local backup
+        
+        checkRecurringItems();
+        renderList();
+    }, (err) => {
+        console.error("Firestore sync error:", err);
+    });
+}
+
 function initApp() {
   initUsers();
   initTabs();
   setupInputs();
   initNotifications();
-  checkRecurringItems();
-  renderList();
+  if (useFirebase) {
+      setupFirestoreSync();
+  } else {
+      checkRecurringItems();
+      renderList();
+  }
 }
 
 function initTabs() {
@@ -197,9 +251,13 @@ function initTabs() {
     tab.addEventListener('click', () => {
       appData.currentListId = tab.dataset.listid;
       saveData(appData);
-      checkRecurringItems();
       renderTabs();
-      renderList();
+      if (useFirebase) {
+          setupFirestoreSync();
+      } else {
+          checkRecurringItems();
+          renderList();
+      }
     });
   });
 }
@@ -274,8 +332,12 @@ function renderList() {
     const priceInput = li.querySelector('.price-input');
     priceInput.addEventListener('change', (e) => {
         item.price = parseFloat(e.target.value) || 0;
-        saveData(appData);
-        updateSpendingFooter();
+        if (useFirebase) {
+            setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+        } else {
+            saveData(appData);
+            updateSpendingFooter();
+        }
     });
 
     li.querySelector('.item-recurring-btn').addEventListener('click', () => {
@@ -285,8 +347,13 @@ function renderList() {
             item.recurrence = 'inherit';
             item.lastGeneratedFor = listMeta ? getPeriodKey(listMeta.recurrence) : 'none';
         }
-        saveData(appData);
-        renderList();
+        
+        if (useFirebase) {
+            setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+        } else {
+            saveData(appData);
+            renderList();
+        }
     });
 
     li.querySelector('.item-alarm-btn').addEventListener('click', () => {
@@ -295,19 +362,34 @@ function renderList() {
 
     li.querySelector('.item-checkbox').addEventListener('change', (e) => {
       item.done = e.target.checked;
-      saveData(appData);
-      renderList();
+      
+      if (useFirebase) {
+          setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+      } else {
+          saveData(appData);
+          renderList();
+      }
     });
 
     li.querySelector('.delete-btn').addEventListener('click', () => {
       if (item.isRecurring) {
           item.done = true;
           item.hidden = true; // Tombstone template
+          if (useFirebase) {
+              setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+          }
       } else {
-          appData.items = appData.items.filter(i => i.id !== item.id);
+          if (useFirebase) {
+              deleteDoc(doc(db, "lists", appData.currentListId, "items", item.id));
+          } else {
+              appData.items = appData.items.filter(i => i.id !== item.id);
+          }
       }
-      saveData(appData);
-      renderList();
+      
+      if (!useFirebase) {
+          saveData(appData);
+          renderList();
+      }
     });
 
     listEl.appendChild(li);
@@ -342,8 +424,14 @@ function addItem(name) {
   if (!appData.history[activeUserId]) appData.history[activeUserId] = {};
   appData.history[activeUserId][name] = (appData.history[activeUserId][name] || 0) + 1;
 
-  saveData(appData);
-  renderList();
+  if (useFirebase) {
+      setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+      saveData(appData); // persist local history keys
+  } else {
+      appData.items.push(item);
+      saveData(appData);
+      renderList();
+  }
   
   document.getElementById('item-input').value = '';
   document.getElementById('suggestions-dropdown').classList.add('hidden');
@@ -371,8 +459,12 @@ function setupInputs() {
         if(item) {
             item.alertTime = time || null;
             item.alertNotified = null; // reset fired state
-            saveData(appData);
-            renderList();
+            if (useFirebase) {
+                setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+            } else {
+                saveData(appData);
+                renderList();
+            }
         }
         document.getElementById('item-reminder-modal').classList.add('hidden');
         if (time && "Notification" in window && Notification.permission === "default") {
@@ -384,8 +476,12 @@ function setupInputs() {
         const item = appData.items.find(i => i.id === currentEditingItemId);
         if(item) {
             item.alertTime = null;
-            saveData(appData);
-            renderList();
+            if (useFirebase) {
+                setDoc(doc(db, "lists", appData.currentListId, "items", item.id), item);
+            } else {
+                saveData(appData);
+                renderList();
+            }
         }
         document.getElementById('item-reminder-modal').classList.add('hidden');
     });
