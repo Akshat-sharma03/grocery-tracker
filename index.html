@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grocery Tracker</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div id="app" class="paper-container">
+        <header>
+            <h1 class="logo">Grocery Tracker <span class="doodle-cart">🛒</span></h1>
+        </header>
+
+        <div class="list-tabs" id="list-tabs">
+            <button class="list-tab active" data-listid="weekly">📅 Weekly Shop</button>
+            <button class="list-tab" data-listid="monthly">🗓️ Monthly Shop</button>
+            <button class="list-tab" data-listid="leisure">🎉 Leisure</button>
+        </div>
+
+        <div class="user-switcher">
+            <div class="user-card active" data-userid="u1" style="--user-color: var(--user1);">
+                <div class="avatar">Alex</div>
+            </div>
+            <div class="user-card" data-userid="u2" style="--user-color: var(--user2);">
+                <div class="avatar">Sam</div>
+            </div>
+        </div>
+
+        <div class="input-area" style="margin-bottom: 1rem;">
+            <div class="input-wrapper">
+                <input type="text" id="item-input" placeholder="Add an item..." autocomplete="off">
+                <div id="suggestions-dropdown" class="suggestions hidden">
+                    <!-- Suggestions rendered here -->
+                </div>
+            </div>
+            <button id="add-btn" class="sketch-btn">Add ✏️</button>
+            <button id="reminder-btn" class="sketch-btn icon-btn">⏰</button>
+        </div>
+        
+        <div class="input-area">
+            <div class="input-wrapper">
+                <input type="text" id="recipe-input" placeholder="Find Recipe (e.g. Carbonara)" autocomplete="off">
+                <div id="recipe-dropdown" class="suggestions hidden">
+                    <!-- Recipes rendered here -->
+                </div>
+            </div>
+            <button id="add-recipe-btn" class="sketch-btn" style="background-color: var(--user2);">Cook 👨‍🍳</button>
+        </div>
+
+        <main>
+            <ul id="grocery-list" class="grocery-list">
+                <!-- Items rendered here using JS -->
+            </ul>
+        </main>
+        
+        <div id="spending-footer" class="spending-footer hidden"></div>
+
+        <!-- Reminder Modal (Ticket Style) -->
+        <div id="reminder-modal" class="modal hidden">
+            <div class="modal-content ticket">
+                <h2>Set Reminder</h2>
+                <input type="time" id="reminder-time">
+                <div class="toggle-wrapper">
+                    <button class="sketch-btn" id="test-global-reminder" style="background-color: #8be9fd; font-size: 1rem; margin-right: 0.5rem;">Test Alert</button>
+                    <label class="switch">
+                        <input type="checkbox" id="reminder-toggle" checked>
+                        <span class="slider round"></span>
+                    </label>
+                    <span style="font-family: var(--font-heading); font-size: 1.4rem;">Enable Alert</span>
+                </div>
+                <button id="save-reminder" class="sketch-btn">Save</button>
+                <button id="close-reminder" class="sketch-btn" style="background-color: var(--bg);">Close</button>
+            </div>
+        </div>
+
+        <!-- Item Reminder Modal -->
+        <div id="item-reminder-modal" class="modal hidden">
+            <div class="modal-content ticket" style="background-color: #e2f0cb;">
+                <h2>Remind me to buy:<br><span id="reminder-item-name" style="color: var(--text);"></span></h2>
+                <input type="time" id="item-reminder-time" style="background-color: white; padding: 0.5rem; border: 2px dashed var(--text); border-radius: 5px; font-family: var(--font-body); font-size: 1.4rem; margin-bottom: 1.5rem;">
+                <div style="display: flex; gap: 0.5rem; justify-content: center; margin-bottom: 1rem;">
+                    <button id="save-item-reminder" class="sketch-btn">Save</button>
+                    <button id="clear-item-reminder" class="sketch-btn" style="background-color: #ffbaba;">Reset</button>
+                </div>
+                <button id="close-item-reminder" class="sketch-btn" style="background-color: var(--bg);">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="completion-message">List complete! 🎉</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script type="module" src="emoji-map.js"></script>
+    <script type="module" src="suggestions.js"></script>
+    <script type="module" src="users.js"></script>
+    <script type="module" src="app.js"></script>
+    <script type="module" src="notifications.js"></script>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(registration => {
+                    console.log('SW registered: ', registration);
+                }).catch(registrationError => {
+                    console.log('SW registration failed: ', registrationError);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
